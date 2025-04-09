@@ -28,10 +28,13 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const query = searchInput.value.trim();
         if (query) {
-            window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, "_blank");
+            try {
+                window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, "_blank");
+            } catch (error) {
+                console.error("Failed to open the search URL:", error);
+            }
+        } else {
+            alert("Please enter a search query.");
         }
     });
-
-    // Automatically open Pixlet site as a new tab when the page loads
-    window.open('https://pixlet.netlify.app', '_blank');
 });

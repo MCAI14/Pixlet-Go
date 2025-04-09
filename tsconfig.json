@@ -1,0 +1,16 @@
+{
+    "compilerOptions": {
+        "target": "ESNext", // Define o alvo da compilação
+        "module": "ESNext", // Usa módulos ES
+        "moduleResolution": "Node", // Resolve módulos como o Node.js
+        "strict": true, // Ativa verificações estritas
+        "esModuleInterop": true, // Permite interoperabilidade com módulos CommonJS
+        "skipLibCheck": true, // Ignora verificação de tipos em arquivos de declaração
+        "baseUrl": ".", // Define a base para caminhos relativos
+        "paths": {
+            "*": ["node_modules/*"] // Resolve dependências no node_modules
+        }
+    },
+    "include": ["src/**/*"], // Inclui arquivos na pasta src
+    "exclude": ["node_modules", "dist"] // Exclui node_modules e dist
+}
