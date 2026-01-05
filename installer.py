@@ -18,11 +18,26 @@ QT_BROWSER = os.path.join(REPO_DIR, 'qt_browser.py')
 
 
 def desktop_path():
-    # Try common locations for the Windows Desktop
-    try:
-        return os.path.join(os.environ['USERPROFILE'], 'Desktop')
-    except Exception:
-        return os.path.expanduser('~')
+    """Try to find the Desktop folder in multiple languages/locations."""
+    userprofile = os.environ.get('USERPROFILE', os.path.expanduser('~'))
+    
+    # Common desktop folder names in different languages
+    desktop_names = [
+        'Desktop',  # English
+        'Ambiente de Trabalho',  # Portuguese
+        'Área de Trabalho',  # Portuguese variant
+        'Bureau',  # French
+        'Escritorio',  # Spanish
+        'Schreibtisch',  # German
+    ]
+    
+    for desktop_name in desktop_names:
+        desktop_path_candidate = os.path.join(userprofile, desktop_name)
+        if os.path.isdir(desktop_path_candidate):
+            return desktop_path_candidate
+    
+    # Fallback: use USERPROFILE or home
+    return userprofile if os.path.isdir(userprofile) else os.path.expanduser('~')
 
 
 def is_windows_admin() -> bool:
@@ -201,7 +216,7 @@ class InstallerApp(tk.Tk):
         threading.Thread(target=self.install_from_github, args=(repo, dest), daemon=True).start()
 
     def install_from_github(self, owner_repo: str, dest_dir: str, branch: str = 'main'):
-        """Download the repository branch zip from GitHub, extract to dest_dir, run pip install -r and create shortcut."""
+        """Download the repository source code zip from GitHub, extract to dest_dir, run pip install -r and create shortcut."""
         self.status.config(text='Baixando do GitHub...')
         self.net_btn.config(state='disabled')
         url = f'https://github.com/{owner_repo}/archive/refs/heads/{branch}.zip'
@@ -216,18 +231,12 @@ class InstallerApp(tk.Tk):
             with zipfile.ZipFile(zip_path, 'r') as z:
                 z.extractall(tmpdir)
 
-            # Find extracted folder
-            entries = [os.path.join(tmpdir, e) for e in os.listdir(tmpdir) if os.path.isdir(os.path.join(tmpdir, e))]
-            repo_root = None
-            for e in entries:
-                if e.endswith(f'-{branch}') or e.endswith(f'-{branch}/'):
-                    repo_root = e
-                    break
-            if not repo_root and entries:
-                repo_root = entries[0]
-
-            if not repo_root:
-                raise RuntimeError('Não foi possível localizar a raiz do repositório extraído')
+            # Find extracted folder (should be repo_name-branch format, e.g., Pixlet-Go-main)
+            extracted_dirs = [d for d in os.listdir(tmpdir) if os.path.isdir(os.path.join(tmpdir, d)) and d != '__MACOSX']
+            if not extracted_dirs:
+                raise RuntimeError('Não foi possível localizar a raíz do repositório extraído')
+            repo_root = os.path.join(tmpdir, extracted_dirs[0])
+            self.append_output(f'Pasta extraída: {extracted_dirs[0]}\n')
 
             # Prepare destination
             if os.path.exists(dest_dir):
@@ -258,11 +267,20 @@ class InstallerApp(tk.Tk):
             # Create shortcut to the installed qt_browser.py if present
             installed_qt = os.path.join(dest_dir, 'qt_browser.py')
             if os.path.exists(installed_qt):
-                bat_path = os.path.join(desktop_path(), 'Pixlet-Browser.bat')
-                content = f'@echo off\ncd /d "{dest_dir}"\n"{sys.executable}" "{installed_qt}" %*\n'
-                with open(bat_path, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                self.append_output(f'Atalho criado: {bat_path}\n')
+                desk = desktop_path()
+                if desk and os.path.isdir(desk):
+                    bat_path = os.path.join(desk, 'Pixlet-Browser.bat')
+                    content = f'@echo off\ncd /d "{dest_dir}"\n"{sys.executable}" "{installed_qt}" %*\npause\n'
+                    try:
+                        with open(bat_path, 'w', encoding='utf-8') as f:
+                            f.write(content)
+                        self.append_output(f'Atalho criado: {bat_path}\n')
+                    except Exception as e:
+                        self.append_output(f'Aviso: Não foi possível criar atalho: {e}\n')
+                else:
+                    self.append_output(f'Aviso: Pasta de atalhos não encontrada, atalho não criado\n')
+            else:
+                self.append_output(f'Aviso: qt_browser.py não encontrado na instalação\n')
 
             self.append_output('Instalação a partir do GitHub concluída.\n')
             self.status.config(text='Instalação GitHub concluída')
@@ -277,21 +295,94 @@ class InstallerApp(tk.Tk):
                 pass
 
     def create_shortcut(self):
+        """Create a shortcut with optional manual fallback dialog."""
         desk = desktop_path()
+        
+        # Verify we have a valid directory
         if not os.path.isdir(desk):
-            messagebox.showerror('Erro', f'Área de trabalho não encontrada: {desk}')
+            self.append_output(f'Pasta de área de trabalho não encontrada: {desk}\n')
+            self._show_shortcut_help_dialog(desk)
             return
 
-        bat_path = os.path.join(desk, 'Pixlet-Browser.bat')
         python_exec = sys.executable
-        content = f'@echo off\ncd /d "{REPO_DIR}"\n"{python_exec}" "{QT_BROWSER}" %*\n'
+        bat_path = os.path.join(desk, 'Pixlet-Browser.bat')
+        content = f'@echo off\ncd /d "{REPO_DIR}"\n"{python_exec}" "{QT_BROWSER}" %*\npause\n'
+        
+        # Try to create the shortcut
         try:
             with open(bat_path, 'w', encoding='utf-8') as f:
                 f.write(content)
-            self.append_output(f'Atalho criado: {bat_path}\n')
-            messagebox.showinfo('Atalho criado', f'Arquivo criado: {bat_path}')
+            self.append_output(f'✓ Atalho criado com sucesso: {bat_path}\n')
+            messagebox.showinfo('Sucesso', f'Atalho criado em:\n{bat_path}\n\nProcure "Pixlet-Browser.bat" na sua Área de Trabalho.')
         except Exception as e:
-            messagebox.showerror('Erro', f'Falha ao criar atalho: {e}')
+            self.append_output(f'✗ Erro ao criar atalho: {e}\n')
+            self._show_shortcut_help_dialog(desk, error=str(e))
+
+    def _show_shortcut_help_dialog(self, desk_path, error=None):
+        """Show a helper dialog with manual shortcut creation instructions."""
+        python_exec = sys.executable
+        help_win = tk.Toplevel(self)
+        help_win.title('Ajuda para Criar Atalho')
+        help_win.geometry('600x500')
+
+        frm = ttk.Frame(help_win, padding=12)
+        frm.pack(fill='both', expand=True)
+
+        if error:
+            ttk.Label(frm, text=f'Erro detectado:', font=('Segoe UI', 10, 'bold'), foreground='red').pack(anchor='w')
+            ttk.Label(frm, text=error, wraplength=550, foreground='red').pack(anchor='w', pady=(0, 12))
+
+        ttk.Label(frm, text='Como criar o atalho manualmente:', font=('Segoe UI', 10, 'bold')).pack(anchor='w', pady=(12,0))
+
+        instructions_text = f"""
+1. LOCALIZAÇÃO DA ÁREA DE TRABALHO DETECTADA:
+   {desk_path}
+
+2. OPÇÃO A - Criar um arquivo .bat (recomendado):
+   
+   a) Clique com botão DIREITO na Área de Trabalho
+   b) Selecione "Novo" → "Documento de Texto"
+   c) Cole o seguinte:
+   
+      @echo off
+      cd /d "{REPO_DIR}"
+      "{python_exec}" "{QT_BROWSER}" %*
+      pause
+   
+   d) Guarde como "Pixlet-Browser.bat" (com extensão .bat)
+   e) Dê um duplo clique para testar
+
+3. OPÇÃO B - Criar um atalho (.lnk):
+   
+   a) Clique com botão DIREITO na Área de Trabalho
+   b) Selecione "Novo" → "Atalho"
+   c) Introduza:
+      {python_exec} "{QT_BROWSER}"
+   d) Dê o nome "Pixlet Browser"
+   e) Clique "Concluir"
+
+4. TESTAR:
+   - Procure o atalho na Área de Trabalho
+   - Dê um duplo clique
+   - A janela do navegador deve abrir-se
+
+Se nenhuma das opções funcionar, abra uma janela de Comando e execute:
+   python "{QT_BROWSER}"
+"""
+
+        txt = scrolledtext.ScrolledText(frm, height=18, width=70)
+        txt.pack(fill='both', expand=True, pady=(8,0))
+        txt.insert('1.0', instructions_text)
+        txt.config(state='disabled')
+
+        # Button to copy instructions to clipboard
+        def copy_to_clipboard():
+            self.clipboard_clear()
+            self.clipboard_append(instructions_text)
+            messagebox.showinfo('Copiar', 'Instruções copiadas para a área de transferência')
+
+        ttk.Button(frm, text='Copiar instruções', command=copy_to_clipboard).pack(pady=(8,0), side='left')
+        ttk.Button(frm, text='Fechar', command=help_win.destroy).pack(pady=(8,0), side='right')
 
     def run_browser(self):
         if not os.path.exists(QT_BROWSER):
