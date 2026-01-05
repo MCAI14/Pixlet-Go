@@ -1,0 +1,79 @@
+===============================================================
+           INSTRUÇÕES PARA CRIAR ATALHO DO PIXLET BROWSER
+===============================================================
+
+Se a janela de criação de atalho não funcionou, siga as instruções abaixo.
+
+PASSO 1: Abrir a pasta "Ambiente de Trabalho"
+─────────────────────────────────────────────
+1. Clique no Explorador de Ficheiros (Pasta) na barra de tarefas.
+2. Na barra de endereço, copie e cole este caminho:
+   
+   C:\Users\misha\Desktop
+   
+   OU procure "Ambiente de Trabalho" na pasta do utilizador.
+
+
+PASSO 2: Criar o atalho manualmente
+────────────────────────────────────
+1. Clique com o botão DIREITO numa área vazia da Área de Trabalho.
+2. Selecione "Novo" → "Atalho".
+3. Na janela que aparece, copie e cole isto no campo "Localização do item":
+
+   C:\Users\misha\AppData\Local\Microsoft\WindowsApps\python3.13.exe 
+   "C:\Users\misha\OneDrive\Ambiente de Trabalho\Repositorios\Pixlet-Go\qt_browser.py"
+
+4. Clique em "Seguinte".
+5. No campo "Introduza um nome para este atalho", escreva:
+   
+   Pixlet Browser
+
+6. Clique em "Concluir".
+
+
+PASSO 3: Testar o atalho
+────────────────────────
+1. Dê um duplo clique no novo atalho "Pixlet Browser" na Área de Trabalho.
+2. Será aberta uma janela com o navegador.
+
+
+ALTERNATIVA: Usar ficheiro .bat
+────────────────────────────────
+Se o atalho acima não funcionar, pode criar um ficheiro .bat:
+
+1. Clique com o botão DIREITO na Área de Trabalho.
+2. Selecione "Novo" → "Documento de Texto".
+3. Cole o seguinte conteúdo:
+
+   @echo off
+   cd /d "C:\Users\misha\OneDrive\Ambiente de Trabalho\Repositorios\Pixlet-Go"
+   C:\Users\misha\AppData\Local\Microsoft\WindowsApps\python3.13.exe qt_browser.py
+   pause
+
+4. Guarde o ficheiro como "Pixlet-Browser.bat" (certifique-se que tem a extensão .bat).
+5. Dê um duplo clique no ficheiro para executar o navegador.
+
+
+NOTA IMPORTANTE
+───────────────
+Se o caminho C:\Users\misha\... não corresponder ao seu nome de utilizador,
+substituir "misha" pelo seu nome de utilizador do Windows.
+
+Para saber o seu nome de utilizador:
+1. Prima Windows + R
+2. Digite: whoami
+3. Carregue em Enter
+
+
+PROBLEMAS?
+──────────
+Se nenhuma das opções acima funcionar, tente:
+1. Abrir uma janela de Comando (cmd).
+2. Digitar:
+   
+   cd C:\Users\misha\OneDrive\Ambiente de Trabalho\Repositorios\Pixlet-Go
+   python qt_browser.py
+
+Se isto funcionar, o navegador está bem instalado.
+
+===============================================================
