@@ -15,7 +15,8 @@ import sys
 from PySide6.QtCore import QUrl, Slot
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QToolBar, QLineEdit, QTabWidget,
-    QWidget, QVBoxLayout, QMessageBox
+    QWidget, QVBoxLayout, QMessageBox, QMenuBar, QStatusBar,
+    QDialog, QLabel, QPushButton, QFormLayout, QFileDialog
 )
 from PySide6.QtGui import QAction
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -41,6 +42,32 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle('Pixlet - Qt Browser')
         self.resize(1200, 800)
+
+        # Simple settings (in-memory for now)
+        self.settings = {
+            'homepage': 'https://www.google.com',
+            'default_new_tab': 'about:blank'
+        }
+
+        # Menu bar (File / View / Settings)
+        menubar = self.menuBar()
+        file_menu = menubar.addMenu('File')
+        new_tab_action = file_menu.addAction('New Tab')
+        new_tab_action.triggered.connect(lambda: self.add_tab(self.settings.get('default_new_tab', 'about:blank')))
+        file_menu.addSeparator()
+        exit_action = file_menu.addAction('Exit')
+        exit_action.triggered.connect(self.close)
+
+        view_menu = menubar.addMenu('View')
+        toggle_tabs_action = view_menu.addAction('Toggle Tab Bar')
+        toggle_tabs_action.triggered.connect(self.toggle_tab_bar)
+
+        tools_menu = menubar.addMenu('Tools')
+        settings_action = tools_menu.addAction('Settings')
+        settings_action.triggered.connect(self.open_settings)
+
+        # Status bar
+        self.setStatusBar(QStatusBar(self))
 
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
@@ -79,7 +106,7 @@ class MainWindow(QMainWindow):
         navtb.addAction(go_btn)
 
         # Primeira aba
-        self.add_tab('https://www.google.com')
+        self.add_tab(self.settings.get('homepage', 'https://www.google.com'))
 
     def add_tab(self, url: str = 'about:blank'):
         tab = BrowserTab(url)
@@ -88,6 +115,8 @@ class MainWindow(QMainWindow):
         # atualizar título quando mudar
         tab.view.titleChanged.connect(lambda t, i=index: self.tabs.setTabText(i, t))
         tab.view.urlChanged.connect(lambda q, i=index: self.on_url_changed(i, q))
+        # Update status when load finished
+        tab.view.loadFinished.connect(lambda ok, i=index: self.statusBar().showMessage(f'Carregada: {tab.view.url().toString()}' if ok else 'Erro ao carregar'))
 
     def close_tab(self, i):
         if self.tabs.count() < 2:
@@ -134,10 +163,58 @@ class MainWindow(QMainWindow):
         if view:
             self.urlbar.setText(view.url().toString())
             self.setWindowTitle(view.title())
+            self.statusBar().showMessage(f'Página: {view.url().toString()}')
 
     def on_url_changed(self, index, qurl):
         if index == self.tabs.currentIndex():
             self.urlbar.setText(qurl.toString())
+
+    def toggle_tab_bar(self):
+        bar = self.tabs.tabBar()
+        visible = bar.isVisible()
+        bar.setVisible(not visible)
+
+    def open_settings(self):
+        dlg = SettingsDialog(self, self.settings)
+        if dlg.exec() == QDialog.Accepted:
+            # update settings
+            self.settings.update(dlg.get_values())
+            self.append_status('Definições atualizadas')
+
+    def append_status(self, text: str):
+        self.statusBar().showMessage(text, 5000)
+
+
+class SettingsDialog(QDialog):
+    def __init__(self, parent=None, current_settings=None):
+        super().__init__(parent)
+        self.setWindowTitle('Settings')
+        self.setModal(True)
+        self.current = dict(current_settings or {})
+
+        form = QFormLayout(self)
+        self.home_edit = QLineEdit(self.current.get('homepage', 'https://www.google.com'))
+        form.addRow('Homepage:', self.home_edit)
+
+        self.newtab_edit = QLineEdit(self.current.get('default_new_tab', 'about:blank'))
+        form.addRow('Default new tab:', self.newtab_edit)
+
+        # Buttons
+        btns = QWidget()
+        btn_layout = QVBoxLayout(btns)
+        save_btn = QPushButton('Save')
+        save_btn.clicked.connect(self.accept)
+        cancel_btn = QPushButton('Cancel')
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(save_btn)
+        btn_layout.addWidget(cancel_btn)
+        form.addRow(btns)
+
+    def get_values(self):
+        return {
+            'homepage': self.home_edit.text().strip(),
+            'default_new_tab': self.newtab_edit.text().strip()
+        }
 
 
 def main():
