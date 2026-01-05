@@ -12,6 +12,10 @@ Se a instalação falhar, tenta `pip install PyQt6 PyQt6-WebEngine` como alterna
 """
 
 import sys
+import os
+import json
+import datetime
+import subprocess
 from PySide6.QtCore import QUrl, Slot
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QToolBar, QLineEdit, QTabWidget,
@@ -65,6 +69,10 @@ class MainWindow(QMainWindow):
         tools_menu = menubar.addMenu('Tools')
         settings_action = tools_menu.addAction('Settings')
         settings_action.triggered.connect(self.open_settings)
+        save_snapshot_action = tools_menu.addAction('Save Snapshot')
+        save_snapshot_action.triggered.connect(self.save_settings_snapshot)
+        open_data_action = tools_menu.addAction('Open Data Folder')
+        open_data_action.triggered.connect(self.open_data_folder)
 
         # Status bar
         self.setStatusBar(QStatusBar(self))
@@ -107,6 +115,13 @@ class MainWindow(QMainWindow):
 
         # Primeira aba
         self.add_tab(self.settings.get('homepage', 'https://www.google.com'))
+
+        # Load persisted settings if available
+        try:
+            self.load_latest_settings()
+        except Exception:
+            # ignore load errors
+            pass
 
     def add_tab(self, url: str = 'about:blank'):
         tab = BrowserTab(url)
@@ -180,9 +195,118 @@ class MainWindow(QMainWindow):
             # update settings
             self.settings.update(dlg.get_values())
             self.append_status('Definições atualizadas')
+            # persist immediately
+            try:
+                self.save_settings_snapshot()
+            except Exception:
+                pass
 
     def append_status(self, text: str):
         self.statusBar().showMessage(text, 5000)
+
+    def storage_base(self) -> str:
+        root = os.path.dirname(os.path.abspath(__file__))
+        base = os.path.join(root, 'local_data')
+        os.makedirs(base, exist_ok=True)
+        return base
+
+    def todays_folder(self) -> str:
+        base = self.storage_base()
+        dname = datetime.date.today().isoformat()
+        folder = os.path.join(base, dname)
+        os.makedirs(folder, exist_ok=True)
+        return folder
+
+    def save_settings_snapshot(self):
+        folder = self.todays_folder()
+        ts = datetime.datetime.now().strftime('%Y-%m-%d_%H%M%S')
+        fname = os.path.join(folder, f'settings_{ts}.json')
+        data = {
+            'settings': self.settings,
+            'tabs': [self.tabs.widget(i).view.url().toString() for i in range(self.tabs.count())],
+            'saved_at': ts
+        }
+        with open(fname, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        # also update current.json for quick load
+        try:
+            self.save_current_settings()
+        except Exception:
+            pass
+        self.append_status(f'Snapshot guardado em {fname}')
+
+    def load_latest_settings(self):
+        # Prefer explicit current.json if present
+        cur = os.path.join(self.storage_base(), 'current.json')
+        if os.path.exists(cur):
+            try:
+                with open(cur, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                s = data.get('settings') if isinstance(data, dict) else None
+                if s:
+                    self.settings.update(s)
+                    self.append_status(f'Definições carregadas de {cur}')
+                    return
+            except Exception:
+                pass
+
+        base = self.storage_base()
+        # find latest date folder
+        dates = [d for d in os.listdir(base) if os.path.isdir(os.path.join(base, d))]
+        if not dates:
+            return
+        dates.sort()
+        latest = dates[-1]
+        folder = os.path.join(base, latest)
+        # find latest settings file
+        files = [f for f in os.listdir(folder) if f.startswith('settings_') and f.endswith('.json')]
+        if not files:
+            return
+        files.sort()
+        latest_file = os.path.join(folder, files[-1])
+        with open(latest_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        s = data.get('settings')
+        if s:
+            self.settings.update(s)
+            self.append_status(f'Definições carregadas de {latest_file}')
+
+    def save_current_settings(self):
+        cur = os.path.join(self.storage_base(), 'current.json')
+        data = {
+            'settings': self.settings,
+            'saved_at': datetime.datetime.now().isoformat()
+        }
+        with open(cur, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def load_current_settings(self):
+        cur = os.path.join(self.storage_base(), 'current.json')
+        if not os.path.exists(cur):
+            return False
+        try:
+            with open(cur, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            s = data.get('settings')
+            if s:
+                self.settings.update(s)
+                self.append_status(f'Definições carregadas de {cur}')
+                return True
+        except Exception:
+            pass
+        return False
+
+    def open_data_folder(self):
+        path = self.storage_base()
+        try:
+            if sys.platform.startswith('win'):
+                os.startfile(path)
+            elif sys.platform == 'darwin':
+                subprocess.run(['open', path])
+            else:
+                subprocess.run(['xdg-open', path])
+        except Exception as e:
+            QMessageBox.warning(self, 'Erro', f'Falha ao abrir a pasta de dados: {e}')
 
 
 class SettingsDialog(QDialog):
