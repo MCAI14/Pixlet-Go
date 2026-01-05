@@ -11,6 +11,13 @@ import time
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 
+# Try to import winreg for Windows Registry access (Desktop path detection)
+try:
+    import winreg
+    HAS_WINREG = True
+except ImportError:
+    HAS_WINREG = False
+
 
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 REQUIREMENTS = os.path.join(REPO_DIR, 'requirements.txt')
@@ -18,25 +25,64 @@ QT_BROWSER = os.path.join(REPO_DIR, 'qt_browser.py')
 
 
 def desktop_path():
-    """Try to find the Desktop folder in multiple languages/locations."""
+    r"""Find the Desktop folder path.
+    
+    On Windows with OneDrive enabled, the Desktop is typically in OneDrive
+    (e.g., C:\Users\<user>\OneDrive\Ambiente de Trabalho on Portuguese systems).
+    
+    This function tries:
+    1. Windows Registry (most reliable for OneDrive redirected folders)
+    2. Common folder names on disk
+    3. Fallback to home directory
+    """
+    
+    # Try Windows Registry first (most reliable)
+    if HAS_WINREG and os.name == 'nt':
+        try:
+            reg = winreg.ConnectRegistry(None, winreg.HKEY_CURRENT_USER)
+            key = winreg.OpenKey(reg, r'Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders')
+            desktop_path_from_reg, _ = winreg.QueryValueEx(key, 'Desktop')
+            winreg.CloseKey(key)
+            
+            if desktop_path_from_reg and os.path.isdir(desktop_path_from_reg):
+                return desktop_path_from_reg
+        except Exception:
+            pass  # Fall through to folder search
+    
+    # Fallback: try common folder names
     userprofile = os.environ.get('USERPROFILE', os.path.expanduser('~'))
     
-    # Common desktop folder names in different languages
+    # Try the standard Windows Desktop folder name first (internal)
+    desktop_candidate = os.path.join(userprofile, 'Desktop')
+    if os.path.isdir(desktop_candidate):
+        return desktop_candidate
+    
+    # Common desktop folder names in different languages (especially with OneDrive)
     desktop_names = [
-        'Desktop',  # English
         'Ambiente de Trabalho',  # Portuguese
         'Área de Trabalho',  # Portuguese variant
         'Bureau',  # French
         'Escritorio',  # Spanish
         'Schreibtisch',  # German
+        'Рабочий стол',  # Russian
+        '桌面',  # Chinese
     ]
     
+    # Try in USERPROFILE
     for desktop_name in desktop_names:
         desktop_path_candidate = os.path.join(userprofile, desktop_name)
         if os.path.isdir(desktop_path_candidate):
             return desktop_path_candidate
     
-    # Fallback: use USERPROFILE or home
+    # Try in OneDrive if it exists
+    onedrive = os.path.join(userprofile, 'OneDrive')
+    if os.path.isdir(onedrive):
+        for desktop_name in desktop_names:
+            desktop_path_candidate = os.path.join(onedrive, desktop_name)
+            if os.path.isdir(desktop_path_candidate):
+                return desktop_path_candidate
+    
+    # Final fallback: use USERPROFILE or home
     return userprofile if os.path.isdir(userprofile) else os.path.expanduser('~')
 
 
