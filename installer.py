@@ -135,6 +135,9 @@ class InstallerApp(tk.Tk):
         self.shortcut_btn = ttk.Button(btns, text='Criar atalho na área de trabalho', command=self.create_shortcut)
         self.shortcut_btn.pack(side='left', padx=8)
 
+        self.icon_btn = ttk.Button(btns, text='Gerar ícone', command=self.generate_icon)
+        self.icon_btn.pack(side='left', padx=8)
+
         self.run_btn = ttk.Button(btns, text='Executar navegador agora', command=self.run_browser)
         self.run_btn.pack(side='left')
 
@@ -341,7 +344,7 @@ class InstallerApp(tk.Tk):
                 pass
 
     def create_shortcut(self):
-        """Create a shortcut with optional manual fallback dialog."""
+        """Create a shortcut (.lnk) with optional manual fallback dialog."""
         desk = desktop_path()
         
         # Verify we have a valid directory
@@ -351,18 +354,160 @@ class InstallerApp(tk.Tk):
             return
 
         python_exec = sys.executable
+        
+        # Try to create .lnk shortcut first (with icon support)
+        lnk_created = self._create_lnk_shortcut(desk, python_exec)
+        
+        if not lnk_created:
+            # Fallback to .bat file
+            self._create_bat_shortcut(desk, python_exec)
+
+    def _create_lnk_shortcut(self, desk, python_exec):
+        """Create a .lnk shortcut with icon using Python or VBScript."""
+        shortcut_path = os.path.join(desk, 'Pixlet Browser.lnk')
+        ico_file = os.path.join(REPO_DIR, 'Pixlet.ico')
+        
+        try:
+            # Try using win32com if available (best option)
+            try:
+                try:
+                    from win32com.client import Dispatch  # type: ignore
+                except ImportError:
+                    raise ImportError('win32com not installed')
+                
+                shell = Dispatch('WScript.Shell')
+                shortcut = shell.CreateShortcut(shortcut_path)
+                shortcut.TargetPath = python_exec
+                shortcut.Arguments = f'"{QT_BROWSER}"'
+                shortcut.WorkingDirectory = REPO_DIR
+                shortcut.Description = 'Pixlet Browser - Navegador embarcado'
+                shortcut.WindowStyle = 1
+                
+                # Set icon if it exists
+                if os.path.exists(ico_file):
+                    shortcut.IconLocation = ico_file
+                
+                shortcut.Save()
+                
+                self.append_output(f'[OK] Atalho .lnk criado: {shortcut_path}\n')
+                messagebox.showinfo('Sucesso', f'Atalho criado em:\n{shortcut_path}\n\nProcure "Pixlet Browser.lnk" na sua Área de Trabalho.')
+                return True
+                
+            except ImportError:
+                # Fallback to VBScript approach
+                self.append_output('win32com não disponível, tentando VBScript...\n')
+                
+                vbs_file = os.path.join(REPO_DIR, 'create_shortcut_temp.vbs')
+                vbs_content = f'''Set objShell = CreateObject("WScript.Shell")
+Set objFSO = CreateObject("Scripting.FileSystemObject")
+
+strDesktop = "{desk}"
+strRepoDir = "{REPO_DIR}"
+strQtBrowser = "{QT_BROWSER}"
+strIcon = "{ico_file}"
+strPython = "{python_exec}"
+strShortcutPath = strDesktop & "\\Pixlet Browser.lnk"
+
+Set objLink = objShell.CreateShortcut(strShortcutPath)
+objLink.TargetPath = strPython
+objLink.Arguments = strQtBrowser
+objLink.WorkingDirectory = strRepoDir
+objLink.Description = "Pixlet Browser - Navegador embarcado"
+objLink.WindowStyle = 1
+
+If objFSO.FileExists(strIcon) Then
+    objLink.IconLocation = strIcon
+End If
+
+objLink.Save
+'''
+                
+                with open(vbs_file, 'w', encoding='utf-8') as f:
+                    f.write(vbs_content)
+                
+                # Execute VBScript
+                subprocess.run(['cscript.exe', vbs_file], check=True)
+                
+                # Clean up
+                try:
+                    os.remove(vbs_file)
+                except:
+                    pass
+                
+                self.append_output(f'[OK] Atalho .lnk criado via VBScript: {os.path.join(desk, "Pixlet Browser.lnk")}\n')
+                messagebox.showinfo('Sucesso', f'Atalho criado em:\n{os.path.join(desk, "Pixlet Browser.lnk")}\n\nProcure "Pixlet Browser.lnk" na sua Área de Trabalho.')
+                return True
+                
+        except Exception as e:
+            self.append_output(f'Erro ao criar atalho .lnk: {e}\n')
+            return False
+
+    def _create_bat_shortcut(self, desk, python_exec):
+        """Fallback: Create a simple .bat shortcut."""
         bat_path = os.path.join(desk, 'Pixlet-Browser.bat')
         content = f'@echo off\ncd /d "{REPO_DIR}"\n"{python_exec}" "{QT_BROWSER}" %*\npause\n'
         
-        # Try to create the shortcut
         try:
             with open(bat_path, 'w', encoding='utf-8') as f:
                 f.write(content)
-            self.append_output(f'✓ Atalho criado com sucesso: {bat_path}\n')
+            self.append_output(f'[OK] Atalho .bat criado: {bat_path}\n')
             messagebox.showinfo('Sucesso', f'Atalho criado em:\n{bat_path}\n\nProcure "Pixlet-Browser.bat" na sua Área de Trabalho.')
         except Exception as e:
-            self.append_output(f'✗ Erro ao criar atalho: {e}\n')
+            self.append_output(f'[ERRO] Falha ao criar atalho: {e}\n')
             self._show_shortcut_help_dialog(desk, error=str(e))
+
+    def generate_icon(self):
+        """Generate ICO file from SVG and associate with .bat files."""
+        svg_file = os.path.join(REPO_DIR, 'Pixlet.svg')
+        ico_file = os.path.join(REPO_DIR, 'Pixlet.ico')
+        
+        if not os.path.exists(svg_file):
+            messagebox.showerror('Erro', f'Ficheiro SVG não encontrado: {svg_file}')
+            return
+        
+        def worker():
+            self.status.config(text='Gerando ícone...')
+            self.icon_btn.config(state='disabled')
+            
+            try:
+                # Try using Pillow + cairosvg
+                self.append_output('Tentando gerar icone com Pillow/cairosvg...\n')
+                try:
+                    try:
+                        import cairosvg  # type: ignore
+                        from PIL import Image  # type: ignore
+                    except ImportError as ie:
+                        raise ImportError(f'Required package missing: {ie}')
+                    
+                    png_file = os.path.join(REPO_DIR, 'Pixlet.png')
+                    cairosvg.svg2png(url=svg_file, write_to=png_file, output_width=256, output_height=256)
+                    self.append_output(f'PNG criado: {png_file}\n')
+                    
+                    img = Image.open(png_file)
+                    img.save(ico_file, format='ICO', sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)])
+                    self.append_output(f'[OK] Icone criado: {ico_file}\n')
+                    
+                except ImportError:
+                    # Try ImageMagick
+                    self.append_output('cairosvg/Pillow nao disponivel, tentando ImageMagick...\n')
+                    png_file = os.path.join(REPO_DIR, 'Pixlet.png')
+                    subprocess.run(['convert', svg_file, '-background', 'none', '-density', '128', png_file], check=True)
+                    subprocess.run(['convert', png_file, '-define', 'icon:auto-resize=256,128,64,48,32,16', ico_file], check=True)
+                    self.append_output(f'[OK] Icone criado com ImageMagick: {ico_file}\n')
+                
+                self.status.config(text='Icone gerado com sucesso')
+                messagebox.showinfo('Sucesso', f'Icone criado em:\n{ico_file}\n\nO icone sera usado nos futuros atalhos.')
+                
+            except Exception as e:
+                self.append_output(f'[ERRO] Falha ao gerar icone: {e}\n')
+                self.append_output('Por favor instale: pip install pillow cairosvg\n')
+                self.status.config(text='Erro ao gerar icone')
+                messagebox.showerror('Erro', f'Nao foi possivel gerar o icone:\n{e}\n\nInstale: pip install pillow cairosvg')
+            
+            finally:
+                self.icon_btn.config(state='normal')
+        
+        threading.Thread(target=worker, daemon=True).start()
 
     def _show_shortcut_help_dialog(self, desk_path, error=None):
         """Show a helper dialog with manual shortcut creation instructions."""
