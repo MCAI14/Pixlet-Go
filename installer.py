@@ -2,6 +2,7 @@ import os
 import sys
 import threading
 import subprocess
+import ctypes
 import urllib.request
 import zipfile
 import shutil
@@ -22,6 +23,33 @@ def desktop_path():
         return os.path.join(os.environ['USERPROFILE'], 'Desktop')
     except Exception:
         return os.path.expanduser('~')
+
+
+def is_windows_admin() -> bool:
+    """Return True if running with Windows admin privileges."""
+    if os.name != 'nt':
+        return False
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def relaunch_as_admin():
+    """Relaunch the current script with admin privileges (Windows UAC).
+    Returns True if the relaunch was started, False otherwise.
+    """
+    if os.name != 'nt':
+        return False
+    python_exe = sys.executable
+    script = os.path.abspath(__file__)
+    params = f'"{python_exe}" "{script}"'
+    try:
+        # ShellExecuteW returns an instance handle > 32 on success
+        h = ctypes.windll.shell32.ShellExecuteW(None, 'runas', python_exe, f'"{script}"', None, 1)
+        return int(h) > 32
+    except Exception:
+        return False
 
 
 class InstallerApp(tk.Tk):
@@ -105,6 +133,25 @@ class InstallerApp(tk.Tk):
             messagebox.showwarning('Ficheiro não encontrado', f'Não foi encontrado {REQUIREMENTS}')
             return
 
+        # Ensure admin privileges before installing system-wide packages
+        if not is_windows_admin():
+            # ask the user to restart with elevation
+            proceed = messagebox.askyesno('Privilégios necessários',
+                                          'A instalação de dependências pode requerer privilégios de administrador. Reiniciar o instalador com privilégios?')
+            if proceed:
+                started = relaunch_as_admin()
+                if started:
+                    self.append_output('A reiniciar o instalador com privilégios de administrador...\n')
+                    self.destroy()
+                    sys.exit(0)
+                else:
+                    messagebox.showerror('Falha', 'Não foi possível reiniciar com privilégios de administrador.')
+                    return
+            else:
+                # user declined elevation
+                self.append_output('Instalação cancelada — privilégios não concedidos.\n')
+                return
+
         def worker():
             self.status.config(text='Instalando dependências...')
             self.install_btn.config(state='disabled')
@@ -132,6 +179,23 @@ class InstallerApp(tk.Tk):
 
         if os.path.exists(dest) and os.listdir(dest):
             if not messagebox.askyesno('Confirmar', f'A pasta {dest} não está vazia — prosseguir e SOBREPOR?'):
+                return
+
+        # Ensure admin privileges before installing to system locations
+        if not is_windows_admin():
+            proceed = messagebox.askyesno('Privilégios necessários',
+                                          'A instalação a partir do GitHub pode requerer privilégios de administrador. Reiniciar o instalador com privilégios?')
+            if proceed:
+                started = relaunch_as_admin()
+                if started:
+                    self.append_output('A reiniciar o instalador com privilégios de administrador...\n')
+                    self.destroy()
+                    sys.exit(0)
+                else:
+                    messagebox.showerror('Falha', 'Não foi possível reiniciar com privilégios de administrador.')
+                    return
+            else:
+                self.append_output('Instalação GitHub cancelada — privilégios não concedidos.\n')
                 return
 
         threading.Thread(target=self.install_from_github, args=(repo, dest), daemon=True).start()
