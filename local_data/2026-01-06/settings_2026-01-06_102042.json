@@ -1,0 +1,11 @@
+{
+  "settings": {
+    "homepage": "https://www.google.com",
+    "default_new_tab": "https://pixlet.netlify.app"
+  },
+  "tabs": [
+    "https://app.escolavirtual.pt/lms/subjectsstudent/detail/6651",
+    "about:blank"
+  ],
+  "saved_at": "2026-01-06_102042"
+}

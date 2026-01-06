@@ -1,0 +1,12 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CLASSES_ROOT\PixletGo]
+@="URL:pixgo"
+"URL Protocol"=""
+
+[HKEY_CLASSES_ROOT\PixletGo\shell]
+
+[HKEY_CLASSES_ROOT\PixletGo\shell\open]
+
+[HKEY_CLASSES_ROOT\PixletGo\shell\open\command]
+@="\"C:\Users\misha\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.11_qbz5n2kfra8p0\python.exe" \"C:\Users\misha\OneDrive\Ambiente de Trabalho\Repositorios\Pixlet-Go\qt_browser.py" \"%1\""

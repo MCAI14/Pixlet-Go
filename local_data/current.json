@@ -1,0 +1,8 @@
+{
+  "settings": {
+    "homepage": "https://pixlet.netlify.app",
+    "default_new_tab": "https://pixlet.netlify.app",
+    "browser_test": "https://pixlet.netlify.app/browserfunctest"
+  },
+  "saved_at": "2026-01-06T10:20:42.615071"
+}
