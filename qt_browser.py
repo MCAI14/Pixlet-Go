@@ -271,12 +271,29 @@ class MainWindow(QMainWindow):
         bookmarks_action.triggered.connect(self.open_bookmarks_dialog)
         passwords_action = tools_menu.addAction('Manage Passwords')
         passwords_action.triggered.connect(self.open_passwords_dialog)
+        # Disable passwords action if encryption is not available
+        try:
+            passwords_action.setEnabled(bool(self.password_manager.cipher))
+            if not self.password_manager.cipher:
+                passwords_action.setToolTip('cryptography not installed; pip install cryptography')
+        except Exception:
+            pass
         tools_menu.addSeparator()
         firebase_menu = tools_menu.addMenu('Firebase Sync')
         login_firebase = firebase_menu.addAction('Login to Firebase')
         login_firebase.triggered.connect(self.firebase_login)
         sync_now = firebase_menu.addAction('Sync Now')
         sync_now.triggered.connect(self.firebase_sync_now)
+        # Disable Firebase actions if firebase client not available
+        try:
+            enabled = bool(self.firebase_sync)
+            login_firebase.setEnabled(enabled)
+            sync_now.setEnabled(enabled)
+            if not enabled:
+                login_firebase.setToolTip('pyrebase4 not installed or Firebase unavailable; pip install pyrebase4')
+                sync_now.setToolTip('pyrebase4 not installed or Firebase unavailable; pip install pyrebase4')
+        except Exception:
+            pass
         tools_menu.addSeparator()
         open_data_action = tools_menu.addAction('Open Data Folder')
         open_data_action.triggered.connect(self.open_data_folder)

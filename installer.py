@@ -32,11 +32,25 @@ def is_windows_admin():
 
 
 def relaunch_as_admin():
-    """Relança o script com privilégios de administrador."""
+    """Relança o script com privilégios de administrador (sem janela de console)."""
     try:
         import ctypes
-        ctypes.windll.shell.ShellExecuteEx(lpVerb='runas', lpFile=sys.executable, lpParameters=' '.join(sys.argv))
-        return True
+        # Use pythonw.exe instead of python.exe to avoid console window
+        python_exe = sys.executable
+        if python_exe.endswith('python.exe'):
+            pythonw_exe = python_exe.replace('python.exe', 'pythonw.exe')
+            if os.path.exists(pythonw_exe):
+                python_exe = pythonw_exe
+        
+        # Add --elevated flag to indicate the elevated process should continue with GUI
+        args = sys.argv[1:] + ['--elevated']
+        params = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in args)
+        # ShellExecuteW returns >32 on success
+        ret = ctypes.windll.shell32.ShellExecuteW(None, 'runas', python_exe, params, None, 0)
+        try:
+            return int(ret) > 32
+        except Exception:
+            return False
     except Exception:
         return False
 
@@ -91,9 +105,21 @@ class InstallerApp(tk.Tk):
         self.status = ttk.Label(self, text='Pronto', relief='sunken', anchor='w')
         self.status.pack(fill='x', side='bottom')
 
+        # Check if running as admin and show status
+        try:
+            if os.name == 'nt':
+                if is_windows_admin():
+                    self.append_output('✓ Executando com privilégios de administrador.\n')
+                else:
+                    self.append_output('⚠️ Executando sem privilégios. Clique em "Instalar" para elevar.\n')
+        except Exception:
+            pass
+
         # GitHub install defaults
         self.github_default = tk.StringVar(value='MCAI14/Pixlet-Go')
-        self.install_dir_default = tk.StringVar(value=os.path.join(os.path.expanduser('~'), 'Pixlet-Browser'))
+        # Default to Program Files when available (requires admin to write)
+        program_files = os.environ.get('ProgramFiles') or r'C:\Program Files'
+        self.install_dir_default = tk.StringVar(value=os.path.join(program_files, 'Pixlet-Browser'))
 
         opts = ttk.Frame(frm)
         opts.pack(fill='x', pady=(6, 0))
@@ -142,17 +168,11 @@ class InstallerApp(tk.Tk):
             messagebox.showwarning('Ficheiro não encontrado', f'Não foi encontrado {REQUIREMENTS}')
             return
 
-        # Ensure admin privileges before installing system-wide packages
+        # Check if running as admin
         if not is_windows_admin():
-            proceed = messagebox.askyesno('Privilégios necessários',
-                                          'A instalação de dependências pode requerer privilégios de administrador. Reiniciar o instalador com privilégios?')
-            if proceed:
-                if relaunch_as_admin():
-                    self.destroy()
-                    return
-            else:
-                self.append_output('Instalação cancelada — privilégios não concedidos.\n')
-                return
+            messagebox.showwarning('Privilégios necessários',
+                                          'A instalação requer privilégios de administrador.\nAbra o instalador como administrador.')
+            return
 
         def worker():
             self.status.config(text='Instalando dependências...')
@@ -184,20 +204,11 @@ class InstallerApp(tk.Tk):
             if not messagebox.askyesno('Confirmar', f'A pasta {dest} não está vazia — prosseguir e SOBREPOR?'):
                 return
 
-        # Ensure admin privileges before installing to system locations
+        # Check if running as admin
         if not is_windows_admin():
-            proceed = messagebox.askyesno('Privilégios necessários',
-                                          'A instalação a partir do GitHub pode requerer privilégios de administrador. Reiniciar o instalador com privilégios?')
-            if proceed:
-                started = relaunch_as_admin()
-                if started:
-                    self.destroy()
-                    return
-                else:
-                    messagebox.showerror('Erro', 'Não foi possível relançar com privilégios')
-            else:
-                self.append_output('Instalação GitHub cancelada — privilégios não concedidos.\n')
-                return
+            messagebox.showwarning('Privilégios necessários',
+                                          'A instalação requer privilégios de administrador.\nAbra o instalador como administrador.')
+            return
 
         threading.Thread(target=self.install_from_github, args=(repo, dest), daemon=True).start()
 
@@ -400,6 +411,9 @@ Se nenhuma das opções funcionar, abra uma janela de Comando e execute:
 
 
 def main():
+    app = InstallerApp()
+    app.mainloop()
+
     app = InstallerApp()
     app.mainloop()
 
