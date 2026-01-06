@@ -16,14 +16,22 @@ import os
 import json
 import datetime
 import subprocess
+import base64
 from PySide6.QtCore import QUrl, Slot
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QToolBar, QLineEdit, QTabWidget,
     QWidget, QVBoxLayout, QMessageBox, QMenuBar, QStatusBar,
-    QDialog, QLabel, QPushButton, QFormLayout, QFileDialog
+    QDialog, QLabel, QPushButton, QFormLayout, QFileDialog,
+    QListWidget, QListWidgetItem, QHBoxLayout, QInputDialog,
+    QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox
 )
 from PySide6.QtGui import QAction
 from PySide6.QtWebEngineWidgets import QWebEngineView
+
+try:
+    from cryptography.fernet import Fernet
+except ImportError:
+    Fernet = None
 
 
 class BrowserTab(QWidget):
@@ -41,6 +49,171 @@ class BrowserTab(QWidget):
         return self.view.url().toString()
 
 
+class HistoryManager:
+    """Gerencia histórico de navegação com timestamps"""
+    def __init__(self, base_path: str):
+        self.history_file = os.path.join(base_path, 'history.json')
+        self.history = self.load_history()
+
+    def add_entry(self, url: str, title: str = ''):
+        """Adiciona entrada ao histórico"""
+        entry = {
+            'url': url,
+            'title': title,
+            'timestamp': datetime.datetime.now().isoformat(),
+            'visited': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        self.history.append(entry)
+        self.save_history()
+
+    def load_history(self) -> list:
+        """Carrega histórico de ficheiro"""
+        if os.path.exists(self.history_file):
+            try:
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                return []
+        return []
+
+    def save_history(self):
+        """Guarda histórico em ficheiro"""
+        try:
+            with open(self.history_file, 'w', encoding='utf-8') as f:
+                json.dump(self.history, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+    def clear_history(self):
+        """Limpa todo o histórico"""
+        self.history = []
+        self.save_history()
+
+    def get_recent(self, limit: int = 50) -> list:
+        """Retorna últimas entradas"""
+        return sorted(self.history, key=lambda x: x.get('timestamp', ''), reverse=True)[:limit]
+
+
+class BookmarksManager:
+    """Gerencia bookmarks/favoritos"""
+    def __init__(self, base_path: str):
+        self.bookmarks_file = os.path.join(base_path, 'bookmarks.json')
+        self.bookmarks = self.load_bookmarks()
+
+    def add_bookmark(self, url: str, title: str):
+        """Adiciona bookmark"""
+        bookmark = {
+            'url': url,
+            'title': title,
+            'added': datetime.datetime.now().isoformat()
+        }
+        self.bookmarks.append(bookmark)
+        self.save_bookmarks()
+
+    def remove_bookmark(self, url: str):
+        """Remove bookmark por URL"""
+        self.bookmarks = [b for b in self.bookmarks if b['url'] != url]
+        self.save_bookmarks()
+
+    def load_bookmarks(self) -> list:
+        """Carrega bookmarks"""
+        if os.path.exists(self.bookmarks_file):
+            try:
+                with open(self.bookmarks_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                return []
+        return []
+
+    def save_bookmarks(self):
+        """Guarda bookmarks"""
+        try:
+            with open(self.bookmarks_file, 'w', encoding='utf-8') as f:
+                json.dump(self.bookmarks, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+
+class PasswordManager:
+    """Gerencia senhas encriptadas"""
+    def __init__(self, base_path: str):
+        self.passwords_file = os.path.join(base_path, 'passwords.json')
+        self.key_file = os.path.join(base_path, '.key')
+        self.cipher = self._init_cipher()
+        self.passwords = self.load_passwords()
+
+    def _init_cipher(self):
+        """Inicializa encriptação Fernet"""
+        if not Fernet:
+            return None
+        if os.path.exists(self.key_file):
+            try:
+                with open(self.key_file, 'rb') as f:
+                    key = f.read()
+                return Fernet(key)
+            except Exception:
+                return None
+        else:
+            try:
+                key = Fernet.generate_key()
+                with open(self.key_file, 'wb') as f:
+                    f.write(key)
+                return Fernet(key)
+            except Exception:
+                return None
+
+    def add_password(self, service: str, username: str, password: str):
+        """Adiciona senha encriptada"""
+        if not self.cipher:
+            raise Exception('Encriptação não disponível. Instale: pip install cryptography')
+        
+        encrypted = self.cipher.encrypt(password.encode()).decode()
+        entry = {
+            'service': service,
+            'username': username,
+            'password': encrypted,
+            'added': datetime.datetime.now().isoformat()
+        }
+        self.passwords.append(entry)
+        self.save_passwords()
+
+    def get_password(self, service: str, username: str) -> str:
+        """Recupera senha desencriptada"""
+        if not self.cipher:
+            return None
+        for entry in self.passwords:
+            if entry['service'] == service and entry['username'] == username:
+                try:
+                    decrypted = self.cipher.decrypt(entry['password'].encode()).decode()
+                    return decrypted
+                except Exception:
+                    return None
+        return None
+
+    def remove_password(self, service: str, username: str):
+        """Remove entrada de senha"""
+        self.passwords = [p for p in self.passwords if not (p['service'] == service and p['username'] == username)]
+        self.save_passwords()
+
+    def load_passwords(self) -> list:
+        """Carrega senhas"""
+        if os.path.exists(self.passwords_file):
+            try:
+                with open(self.passwords_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception:
+                return []
+        return []
+
+    def save_passwords(self):
+        """Guarda senhas"""
+        try:
+            with open(self.passwords_file, 'w', encoding='utf-8') as f:
+                json.dump(self.passwords, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -52,6 +225,12 @@ class MainWindow(QMainWindow):
             'homepage': 'https://www.google.com',
             'default_new_tab': 'about:blank'
         }
+
+        # Inicializar managers
+        base_path = self.storage_base()
+        self.history_manager = HistoryManager(base_path)
+        self.bookmarks_manager = BookmarksManager(base_path)
+        self.password_manager = PasswordManager(base_path)
 
         # Menu bar (File / View / Settings)
         menubar = self.menuBar()
@@ -71,6 +250,14 @@ class MainWindow(QMainWindow):
         settings_action.triggered.connect(self.open_settings)
         save_snapshot_action = tools_menu.addAction('Save Snapshot')
         save_snapshot_action.triggered.connect(self.save_settings_snapshot)
+        tools_menu.addSeparator()
+        history_action = tools_menu.addAction('View History')
+        history_action.triggered.connect(self.open_history_dialog)
+        bookmarks_action = tools_menu.addAction('Manage Bookmarks')
+        bookmarks_action.triggered.connect(self.open_bookmarks_dialog)
+        passwords_action = tools_menu.addAction('Manage Passwords')
+        passwords_action.triggered.connect(self.open_passwords_dialog)
+        tools_menu.addSeparator()
         open_data_action = tools_menu.addAction('Open Data Folder')
         open_data_action.triggered.connect(self.open_data_folder)
 
@@ -105,6 +292,12 @@ class MainWindow(QMainWindow):
 
         navtb.addSeparator()
 
+        bookmark_btn = QAction('⭐', self)
+        bookmark_btn.triggered.connect(self.add_current_to_bookmarks)
+        navtb.addAction(bookmark_btn)
+
+        navtb.addSeparator()
+
         self.urlbar = QLineEdit()
         self.urlbar.returnPressed.connect(self.navigate_to_url)
         navtb.addWidget(self.urlbar)
@@ -132,6 +325,8 @@ class MainWindow(QMainWindow):
         tab.view.urlChanged.connect(lambda q, i=index: self.on_url_changed(i, q))
         # Update status when load finished
         tab.view.loadFinished.connect(lambda ok, i=index: self.statusBar().showMessage(f'Carregada: {tab.view.url().toString()}' if ok else 'Erro ao carregar'))
+        # Adicionar ao histórico quando a página carrega
+        tab.view.loadFinished.connect(lambda ok, i=index: self._record_history(i) if ok else None)
 
     def close_tab(self, i):
         if self.tabs.count() < 2:
@@ -308,6 +503,54 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.warning(self, 'Erro', f'Falha ao abrir a pasta de dados: {e}')
 
+    def _record_history(self, index: int):
+        """Registar página visitada no histórico"""
+        if index < self.tabs.count():
+            tab = self.tabs.widget(index)
+            if tab:
+                url = tab.view.url().toString()
+                title = tab.view.title()
+                if url and not url.startswith('about:'):
+                    self.history_manager.add_entry(url, title)
+
+    def add_current_to_bookmarks(self):
+        """Adiciona página atual aos bookmarks"""
+        view = self.current_browser()
+        if not view:
+            QMessageBox.warning(self, 'Erro', 'Nenhuma aba aberta')
+            return
+        url = view.url().toString()
+        title = view.title()
+        if not url:
+            QMessageBox.warning(self, 'Erro', 'URL vazia')
+            return
+        try:
+            self.bookmarks_manager.add_bookmark(url, title)
+            self.append_status(f'Bookmark guardado: {title}')
+        except Exception as e:
+            QMessageBox.critical(self, 'Erro', f'Falha ao guardar bookmark: {e}')
+
+    def open_history_dialog(self):
+        """Abre diálogo de histórico"""
+        dlg = HistoryDialog(self, self.history_manager)
+        if dlg.exec() == QDialog.Accepted:
+            url = dlg.get_selected_url()
+            if url:
+                self.add_tab(url)
+
+    def open_bookmarks_dialog(self):
+        """Abre diálogo de bookmarks"""
+        dlg = BookmarksDialog(self, self.bookmarks_manager)
+        if dlg.exec() == QDialog.Accepted:
+            url = dlg.get_selected_url()
+            if url:
+                self.add_tab(url)
+
+    def open_passwords_dialog(self):
+        """Abre diálogo de senhas"""
+        dlg = PasswordsDialog(self, self.password_manager)
+        dlg.exec()
+
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None, current_settings=None):
@@ -339,6 +582,241 @@ class SettingsDialog(QDialog):
             'homepage': self.home_edit.text().strip(),
             'default_new_tab': self.newtab_edit.text().strip()
         }
+
+
+class HistoryDialog(QDialog):
+    """Diálogo para visualizar histórico"""
+    def __init__(self, parent=None, history_manager=None):
+        super().__init__(parent)
+        self.setWindowTitle('Histórico de Navegação')
+        self.setGeometry(100, 100, 700, 500)
+        self.history_manager = history_manager
+        self.selected_url = None
+
+        layout = QVBoxLayout(self)
+        
+        label = QLabel('Clique num item para abrir, ou feche para cancelar:')
+        layout.addWidget(label)
+
+        self.list_widget = QListWidget()
+        self.list_widget.itemDoubleClicked.connect(self.on_item_selected)
+        layout.addWidget(self.list_widget)
+
+        # Carregar histórico
+        if history_manager:
+            for entry in history_manager.get_recent(100):
+                url = entry.get('url', '')
+                title = entry.get('title', 'Sem título')
+                visited = entry.get('visited', '')
+                item_text = f"{title}\n{url}\n({visited})"
+                item = QListWidgetItem(item_text)
+                item.setData(256, url)  # Guardar URL em role 256
+                self.list_widget.addItem(item)
+
+        # Botões
+        btn_layout = QHBoxLayout()
+        open_btn = QPushButton('Abrir')
+        open_btn.clicked.connect(self.on_item_selected)
+        clear_btn = QPushButton('Limpar Histórico')
+        clear_btn.clicked.connect(self.clear_all)
+        close_btn = QPushButton('Fechar')
+        close_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(open_btn)
+        btn_layout.addWidget(clear_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+    def on_item_selected(self):
+        """Abre URL selecionada"""
+        item = self.list_widget.currentItem()
+        if item:
+            self.selected_url = item.data(256)
+            self.accept()
+
+    def clear_all(self):
+        """Limpa histórico"""
+        reply = QMessageBox.question(self, 'Confirmar', 'Deseja limpar todo o histórico?',
+                                     QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            if self.history_manager:
+                self.history_manager.clear_history()
+            self.list_widget.clear()
+            QMessageBox.information(self, 'Sucesso', 'Histórico limpo')
+
+    def get_selected_url(self):
+        return self.selected_url
+
+
+class BookmarksDialog(QDialog):
+    """Diálogo para gerir bookmarks"""
+    def __init__(self, parent=None, bookmarks_manager=None):
+        super().__init__(parent)
+        self.setWindowTitle('Bookmarks')
+        self.setGeometry(100, 100, 700, 500)
+        self.bookmarks_manager = bookmarks_manager
+        self.selected_url = None
+
+        layout = QVBoxLayout(self)
+
+        label = QLabel('Bookmarks guardados:')
+        layout.addWidget(label)
+
+        self.list_widget = QListWidget()
+        self.list_widget.itemDoubleClicked.connect(self.on_item_selected)
+        layout.addWidget(self.list_widget)
+
+        # Carregar bookmarks
+        if bookmarks_manager:
+            for bookmark in bookmarks_manager.bookmarks:
+                url = bookmark.get('url', '')
+                title = bookmark.get('title', 'Sem título')
+                item_text = f"{title}\n{url}"
+                item = QListWidgetItem(item_text)
+                item.setData(256, url)
+                self.list_widget.addItem(item)
+
+        # Botões
+        btn_layout = QHBoxLayout()
+        open_btn = QPushButton('Abrir')
+        open_btn.clicked.connect(self.on_item_selected)
+        delete_btn = QPushButton('Remover')
+        delete_btn.clicked.connect(self.remove_selected)
+        close_btn = QPushButton('Fechar')
+        close_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(open_btn)
+        btn_layout.addWidget(delete_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+    def on_item_selected(self):
+        """Abre bookmark selecionado"""
+        item = self.list_widget.currentItem()
+        if item:
+            self.selected_url = item.data(256)
+            self.accept()
+
+    def remove_selected(self):
+        """Remove bookmark selecionado"""
+        item = self.list_widget.currentItem()
+        if item:
+            url = item.data(256)
+            if self.bookmarks_manager:
+                self.bookmarks_manager.remove_bookmark(url)
+            self.list_widget.takeItem(self.list_widget.row(item))
+            QMessageBox.information(self, 'Sucesso', 'Bookmark removido')
+
+    def get_selected_url(self):
+        return self.selected_url
+
+
+class PasswordsDialog(QDialog):
+    """Diálogo para gerir senhas encriptadas"""
+    def __init__(self, parent=None, password_manager=None):
+        super().__init__(parent)
+        self.setWindowTitle('Gestor de Senhas')
+        self.setGeometry(100, 100, 800, 500)
+        self.password_manager = password_manager
+
+        layout = QVBoxLayout(self)
+
+        if not password_manager.cipher:
+            warning = QLabel('⚠️ Encriptação não disponível.\nInstale: pip install cryptography')
+            layout.addWidget(warning)
+            close_btn = QPushButton('Fechar')
+            close_btn.clicked.connect(self.accept)
+            layout.addWidget(close_btn)
+            return
+
+        label = QLabel('Senhas guardadas (encriptadas):')
+        layout.addWidget(label)
+
+        self.table_widget = QTableWidget()
+        self.table_widget.setColumnCount(3)
+        self.table_widget.setHorizontalHeaderLabels(['Serviço', 'Utilizador', ''])
+        header = self.table_widget.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        layout.addWidget(self.table_widget)
+
+        # Carregar senhas
+        if password_manager:
+            for i, pwd in enumerate(password_manager.passwords):
+                self.table_widget.insertRow(i)
+                service = QTableWidgetItem(pwd.get('service', ''))
+                username = QTableWidgetItem(pwd.get('username', ''))
+                delete_btn = QPushButton('Apagar')
+                delete_btn.clicked.connect(lambda checked, row=i: self.delete_password(row))
+                self.table_widget.setItem(i, 0, service)
+                self.table_widget.setItem(i, 1, username)
+                self.table_widget.setCellWidget(i, 2, delete_btn)
+
+        # Formulário para adicionar nova senha
+        form_layout = QFormLayout()
+        self.service_edit = QLineEdit()
+        self.username_edit = QLineEdit()
+        self.password_edit = QLineEdit()
+        self.password_edit.setEchoMode(QLineEdit.Password)
+        form_layout.addRow('Serviço:', self.service_edit)
+        form_layout.addRow('Utilizador:', self.username_edit)
+        form_layout.addRow('Senha:', self.password_edit)
+        layout.addLayout(form_layout)
+
+        # Botões
+        btn_layout = QHBoxLayout()
+        add_btn = QPushButton('Adicionar Senha')
+        add_btn.clicked.connect(self.add_password)
+        close_btn = QPushButton('Fechar')
+        close_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+
+    def add_password(self):
+        """Adiciona nova senha"""
+        service = self.service_edit.text().strip()
+        username = self.username_edit.text().strip()
+        password = self.password_edit.text().strip()
+
+        if not all([service, username, password]):
+            QMessageBox.warning(self, 'Erro', 'Todos os campos são obrigatórios')
+            return
+
+        try:
+            self.password_manager.add_password(service, username, password)
+            QMessageBox.information(self, 'Sucesso', 'Senha adicionada')
+            self.service_edit.clear()
+            self.username_edit.clear()
+            self.password_edit.clear()
+            # Recarregar tabela
+            self.refresh_table()
+        except Exception as e:
+            QMessageBox.critical(self, 'Erro', f'Falha ao adicionar senha: {e}')
+
+    def delete_password(self, row: int):
+        """Remove senha da linha especificada"""
+        service = self.table_widget.item(row, 0).text()
+        username = self.table_widget.item(row, 1).text()
+        reply = QMessageBox.question(self, 'Confirmar',
+                                    f'Deseja apagar a senha para {service}/{username}?',
+                                    QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.password_manager.remove_password(service, username)
+            self.refresh_table()
+            QMessageBox.information(self, 'Sucesso', 'Senha removida')
+
+    def refresh_table(self):
+        """Recarrega tabela de senhas"""
+        self.table_widget.setRowCount(0)
+        if self.password_manager:
+            for i, pwd in enumerate(self.password_manager.passwords):
+                self.table_widget.insertRow(i)
+                service = QTableWidgetItem(pwd.get('service', ''))
+                username = QTableWidgetItem(pwd.get('username', ''))
+                delete_btn = QPushButton('Apagar')
+                delete_btn.clicked.connect(lambda checked, row=i: self.delete_password(row))
+                self.table_widget.setItem(i, 0, service)
+                self.table_widget.setItem(i, 1, username)
+                self.table_widget.setCellWidget(i, 2, delete_btn)
 
 
 def main():

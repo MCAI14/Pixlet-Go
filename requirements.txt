@@ -1,3 +1,5 @@
-pywebview>=5.0
-cefpython3>=66.0
 PySide6>=6.0
+cryptography>=41.0
+# Opcional (para ícones):
+# Pillow>=10.0
+# cairosvg>=2.7.0
