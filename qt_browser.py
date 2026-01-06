@@ -33,6 +33,11 @@ try:
 except ImportError:
     Fernet = None
 
+try:
+    from firebase_sync import FirebaseSync
+except ImportError:
+    FirebaseSync = None
+
 
 class BrowserTab(QWidget):
     def __init__(self, url: str = 'https://www.google.com'):
@@ -232,6 +237,15 @@ class MainWindow(QMainWindow):
         self.bookmarks_manager = BookmarksManager(base_path)
         self.password_manager = PasswordManager(base_path)
 
+        # Inicializar Firebase Sync (opcional)
+        self.firebase_sync = None
+        self.sync_enabled = False
+        if FirebaseSync:
+            try:
+                self.firebase_sync = FirebaseSync()
+            except Exception:
+                self.firebase_sync = None
+
         # Menu bar (File / View / Settings)
         menubar = self.menuBar()
         file_menu = menubar.addMenu('File')
@@ -257,6 +271,12 @@ class MainWindow(QMainWindow):
         bookmarks_action.triggered.connect(self.open_bookmarks_dialog)
         passwords_action = tools_menu.addAction('Manage Passwords')
         passwords_action.triggered.connect(self.open_passwords_dialog)
+        tools_menu.addSeparator()
+        firebase_menu = tools_menu.addMenu('Firebase Sync')
+        login_firebase = firebase_menu.addAction('Login to Firebase')
+        login_firebase.triggered.connect(self.firebase_login)
+        sync_now = firebase_menu.addAction('Sync Now')
+        sync_now.triggered.connect(self.firebase_sync_now)
         tools_menu.addSeparator()
         open_data_action = tools_menu.addAction('Open Data Folder')
         open_data_action.triggered.connect(self.open_data_folder)
@@ -551,6 +571,38 @@ class MainWindow(QMainWindow):
         dlg = PasswordsDialog(self, self.password_manager)
         dlg.exec()
 
+    def firebase_login(self):
+        """Abre diálogo de login Firebase"""
+        if not self.firebase_sync:
+            QMessageBox.warning(self, 'Firebase', 'Firebase não disponível.\nInstale: pip install pyrebase4')
+            return
+        
+        dlg = FirebaseLoginDialog(self, self.firebase_sync)
+        if dlg.exec() == QDialog.Accepted:
+            self.sync_enabled = True
+            self.append_status('Conectado ao Firebase ✅')
+            # Sincronizar automaticamente após login
+            self.firebase_sync_now()
+
+    def firebase_sync_now(self):
+        """Sincroniza dados com Firebase agora"""
+        if not self.firebase_sync or not self.sync_enabled:
+            QMessageBox.warning(self, 'Firebase', 'Não autenticado no Firebase')
+            return
+        
+        try:
+            # Sincronizar histórico
+            self.firebase_sync.sync_history(self.history_manager.history)
+            # Sincronizar bookmarks
+            self.firebase_sync.sync_bookmarks(self.bookmarks_manager.bookmarks)
+            # Sincronizar senhas
+            self.firebase_sync.sync_passwords(self.password_manager.passwords)
+            
+            self.append_status('Sincronização completa ✅')
+            QMessageBox.information(self, 'Sucesso', 'Dados sincronizados com Firebase')
+        except Exception as e:
+            QMessageBox.critical(self, 'Erro', f'Falha ao sincronizar: {e}')
+
 
 class SettingsDialog(QDialog):
     def __init__(self, parent=None, current_settings=None):
@@ -817,6 +869,79 @@ class PasswordsDialog(QDialog):
                 self.table_widget.setItem(i, 0, service)
                 self.table_widget.setItem(i, 1, username)
                 self.table_widget.setCellWidget(i, 2, delete_btn)
+
+
+class FirebaseLoginDialog(QDialog):
+    """Diálogo de login Firebase"""
+    def __init__(self, parent=None, firebase_sync=None):
+        super().__init__(parent)
+        self.setWindowTitle('Firebase Login')
+        self.setGeometry(100, 100, 400, 250)
+        self.firebase_sync = firebase_sync
+        self.logged_in = False
+
+        layout = QVBoxLayout(self)
+
+        label = QLabel('Login com email e senha\npara sincronizar dados com a cloud')
+        layout.addWidget(label)
+
+        form_layout = QFormLayout()
+        self.email_edit = QLineEdit()
+        self.password_edit = QLineEdit()
+        self.password_edit.setEchoMode(QLineEdit.Password)
+        form_layout.addRow('Email:', self.email_edit)
+        form_layout.addRow('Senha:', self.password_edit)
+        layout.addLayout(form_layout)
+
+        # Botões
+        btn_layout = QHBoxLayout()
+        login_btn = QPushButton('Login')
+        login_btn.clicked.connect(self.do_login)
+        register_btn = QPushButton('Registar')
+        register_btn.clicked.connect(self.do_register)
+        cancel_btn = QPushButton('Cancelar')
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(login_btn)
+        btn_layout.addWidget(register_btn)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+
+    def do_login(self):
+        """Faz login Firebase"""
+        email = self.email_edit.text().strip()
+        password = self.password_edit.text().strip()
+
+        if not email or not password:
+            QMessageBox.warning(self, 'Erro', 'Email e senha são obrigatórios')
+            return
+
+        try:
+            if self.firebase_sync.login(email, password):
+                QMessageBox.information(self, 'Sucesso', f'Bem-vindo, {email}!')
+                self.logged_in = True
+                self.accept()
+            else:
+                QMessageBox.warning(self, 'Erro', 'Login falhou')
+        except Exception as e:
+            QMessageBox.critical(self, 'Erro', f'Falha no login: {e}')
+
+    def do_register(self):
+        """Registra novo utilizador Firebase"""
+        email = self.email_edit.text().strip()
+        password = self.password_edit.text().strip()
+
+        if not email or not password:
+            QMessageBox.warning(self, 'Erro', 'Email e senha são obrigatórios')
+            return
+
+        try:
+            if self.firebase_sync.register(email, password):
+                QMessageBox.information(self, 'Sucesso', 'Conta criada! Faça login agora.')
+                self.do_login()
+            else:
+                QMessageBox.warning(self, 'Erro', 'Registo falhou (email pode já existir)')
+        except Exception as e:
+            QMessageBox.critical(self, 'Erro', f'Falha no registo: {e}')
 
 
 def main():

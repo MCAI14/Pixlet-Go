@@ -1,5 +1,6 @@
 PySide6>=6.0
 cryptography>=41.0
+pyrebase4>=0.5.0
 # Opcional (para ícones):
 # Pillow>=10.0
 # cairosvg>=2.7.0
