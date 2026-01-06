@@ -29,7 +29,7 @@ from PySide6.QtGui import QAction
 from PySide6.QtWebEngineWidgets import QWebEngineView
 
 try:
-    from cryptography.fernet import Fernet
+    from cryptography.fernet import Fernet  # type: ignore
 except ImportError:
     Fernet = None
 

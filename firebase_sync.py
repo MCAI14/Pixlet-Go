@@ -15,7 +15,7 @@ import os
 from datetime import datetime
 
 try:
-    import pyrebase4
+    import pyrebase4  # type: ignore
 except ImportError:
     pyrebase4 = None
 
