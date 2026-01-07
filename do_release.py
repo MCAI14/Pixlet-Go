@@ -46,13 +46,14 @@ cmd.extend(['-d', json.dumps(payload)])
 cmd.append('https://api.github.com/repos/MCAI14/Pixlet-Go/releases')
 
 print(f'Enviando request...')
-result = subprocess.run(cmd, capture_output=True, text=True)
+result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='replace')
 
 try:
-    resp = json.loads(result.stdout)
-except:
-    print(f'✗ Erro ao parsear resposta: {result.stdout[:200]}')
-    print(f'✗ stderr: {result.stderr}')
+    resp = json.loads(result.stdout) if result.stdout else {}
+except Exception as e:
+    print(f'✗ Erro ao parsear resposta: {str(e)[:200]}')
+    if result.stderr:
+        print(f'✗ stderr: {result.stderr[:200]}')
     sys.exit(1)
 
 if 'html_url' in resp:
