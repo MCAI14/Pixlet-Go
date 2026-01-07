@@ -49,3 +49,8 @@ local_data/
 # Release assets (gerados)
 release_assets/
 release_temp/
+
+# Ficheiro0s Secretos
+.env
+GITHUB_TOKEN.env
+*.key
