@@ -1,4 +1,4 @@
-## ✅ Pixlet Browser v0.2.0 - Release Preparation Complete
+# ✅ Pixlet Browser v0.2.0 - Release Preparation Complete
 
 ### Status Atual
 
@@ -18,7 +18,7 @@ gh release create v0.2.0 --title "v0.2.0 - Icon Support & OneDrive Support" --no
 
 #### 2. Via Interface Web (mais fácil)
 
-Aceda a: **https://github.com/MCAI14/Pixlet-Go/releases/new**
+Aceda a: [https://github.com/MCAI14/Pixlet-Go/releases/new](https://github.com/MCAI14/Pixlet-Go/releases/new)
 
 Preencha com:
 
@@ -92,10 +92,10 @@ python create_release.py
 
 ## 🔗 Links Úteis
 
-- **Repositório:** https://github.com/MCAI14/Pixlet-Go
-- **Release Page:** [https://github.com/MCAI14/Pixlet-Go/releases]()
-- **Tag v0.2.0:** https://github.com/MCAI14/Pixlet-Go/releases/tag/v0.2.0
-- **Criar Release:** https://github.com/MCAI14/Pixlet-Go/releases/new
+- **Repositório:** [https://github.com/MCAI14/Pixlet-Go](https://github.com/MCAI14/Pixlet-Go)
+- **Release Page:** [https://github.com/MCAI14/Pixlet-Go/releases](https://github.com/MCAI14/Pixlet-Go/releases)
+- **Tag v0.2.0:** [https://github.com/MCAI14/Pixlet-Go/releases/tag/v0.2.0](https://github.com/MCAI14/Pixlet-Go/releases/tag/v0.2.0)
+- **Criar Release:** [https://github.com/MCAI14/Pixlet-Go/releases/new](https://github.com/MCAI14/Pixlet-Go/releases/new)
 
 ---
 

@@ -28,7 +28,7 @@ python create_release.py
 
 ### Título
 
-**v0.2.0 - Icon Support & OneDrive Support**
+v0.2.0 - Icon Support & OneDrive Support
 
 ### Descrição
 
@@ -88,7 +88,7 @@ pip install pillow cairosvg
 
 Ou use **ImageMagick** ou **Inkscape** (já disponível em muitos sistemas).
 
-#### 🔄 Changelog Detalhado
+### 🔄 Changelog Detalhado
 
 - [x] Detecção de Desktop com suporte a OneDrive
 - [x] Conversão de SVG para ICO (múltiplos métodos)
@@ -138,4 +138,4 @@ Ou use **ImageMagick** ou **Inkscape** (já disponível em muitos sistemas).
 
 **Criado em:** 5 de Janeiro de 2026
 **Desenvolvido por:** MCAI14
-**Repositório:** https://github.com/MCAI14/Pixlet-Go
+**Repositório:** [https://github.com/MCAI14/Pixlet-Go](https://github.com/MCAI14/Pixlet-Go)
